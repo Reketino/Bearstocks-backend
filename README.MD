@@ -82,7 +82,7 @@ price += total_contributions * 0.0001
 BRR (Bursdags-bullrun)
 price *= (1 + seasonal boost + volatility)
 
-🛠 Kjøre prosjektet lokalt
+## 🛠 Kjøre prosjektet lokalt
 pip install -r requirements.txt
 uvicorn main:app --reload
 
