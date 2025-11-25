@@ -2,6 +2,8 @@ import os
 import random
 import asyncio
 import httpx
+import json
+import aiosqlite
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date
@@ -15,6 +17,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+DB_NAME= "stocks.db"
+
+
+
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS stock_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                price REAL NOT NULL
+            )
+        """)
+        await db.commit()
+
+@app.on_event ("startup")
+async def startup_event():
+    await init_db()
+
+
 
 stocks = {
     "BRR": {"name": "BearCoin", "price": 28.0},
@@ -143,6 +168,18 @@ async def fetch_github_data():
                 "commits_today": commits_today,
                 "streak": streak
                 }
+    
+@app.get("/history/{ticker}")
+async def get_history(ticker: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            "SELECT timestamp, price FROM stock_history WHERE ticker = ? ORDER BY id ASC",
+            (ticker,)
+        )
+        rows = await cursor.fetchall()
+
+    
+    return [{"timestamp": r[0], "price": r[1]} for r in rows]
 
 @app.websocket("/ws")
 async def stream(ws: WebSocket):
@@ -168,6 +205,22 @@ async def stream(ws: WebSocket):
                 
             else:
                 data["price"] = round(data["price"] + random.uniform(-1,1), 2)
+
         
         await ws.send_json(stocks)
+
+
+        timestamp = datetime.utcnow().isoformat()
+
+
+        async with aiosqlite.connect(DB_NAME) as db:
+            for ticker, data in stocks.items():
+                await db.execute(
+                    "INSERT INTO stock_history (timestamp, ticker, price) VALUES (?, ?, ?)",
+                    (timestamp, ticker, data ["price"])
+                )
+            await db.commit()
+        
+
+
         await asyncio.sleep(1)
